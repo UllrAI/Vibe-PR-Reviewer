@@ -22,7 +22,7 @@ class Config:
     TARGET_OWNER: str
     TARGET_REPO: str
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
-    AI_MODEL_NAME: str = 'gemini-1.5-flash-latest' # 更新为推荐的模型
+    AI_MODEL_NAME: str = 'gemini-2.5-flash' # 更新为推荐的模型
     MAX_RETRY_ATTEMPTS: int = 3
     RETRY_DELAY: float = 1.0
     REQUEST_TIMEOUT: int = 30
