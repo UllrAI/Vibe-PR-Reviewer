@@ -22,7 +22,7 @@ class Config:
     TARGET_OWNER: str
     TARGET_REPO: str
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
-    AI_MODEL_NAME: str = 'gemini-2.5-flash' # 更新为推荐的模型
+    AI_MODEL_NAME: str = 'gemini-2.5-pro' # 更新为推荐的模型
     MAX_RETRY_ATTEMPTS: int = 3
     RETRY_DELAY: float = 1.0
     REQUEST_TIMEOUT: int = 30
@@ -210,7 +210,7 @@ class PRReviewer:
             total_length += len(file_text)
             files_processed_count += 1
         
-        prompt = f"""你是一位资深软件工程师和代码审查专家。请仔细分析以下从一个 Pull Request 中提取的代码变更。
+        prompt = f"""你是一位严苛的资深软件工程师和代码审查专家。请仔细分析以下从一个 Pull Request 中提取的代码变更。
 
 {diffs_text}
 
@@ -221,7 +221,7 @@ class PRReviewer:
 4.  **检查最佳实践**：代码是否遵循了语言和框架的通用最佳实践？
 5.  **提供具体的、可操作的改进建议**。请使用代码片段来解释你的建议。
 6.  以**简洁、专业的中文**和 **Markdown** 格式提供反馈。
-7.  如果代码质量很高，请给予积极的肯定。
+7.  只需要给出bug及改进建议，不需要给出任何其他内容。
 
 请直接开始你的审查意见，无需任何开场白。"""
         
