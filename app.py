@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import time
-import base64  # <--- 修正点：需要导入 base64 模块
+import base64
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 from functools import wraps
@@ -134,7 +134,6 @@ class GitHubClient:
         logger.info(f"  Output: 成功获取 {len(files)} 个文件变更。")
         return files
 
-    # <--- 修正点：用更稳健的 Contents API 替换 get_raw_file_content
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def get_file_content_from_repo(self, owner: str, repo: str, file_path: str, ref: str) -> str:
         """
