@@ -26,7 +26,7 @@ class Config:
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
     MAX_PROMPT_LENGTH: int = 160000  # 增加提示词长度以容纳上下文
     INCLUDE_FILE_CONTEXT: bool = True
-    CONTEXT_MAX_LINES: int = 500
+    CONTEXT_MAX_LINES: int = 400
     CONTEXT_SURROUNDING_LINES: int = 50
     
     # API 和网络相关的配置
@@ -52,7 +52,7 @@ class Config:
             AI_MODEL_NAME=os.getenv('AI_MODEL_NAME', 'gemini-2.5-pro'),
             REVIEW_LABEL=os.getenv('REVIEW_LABEL', 'ReviewedByUllrAI'),
             INCLUDE_FILE_CONTEXT=os.getenv('INCLUDE_FILE_CONTEXT', 'true').lower() in ('true', '1', 't'),
-            CONTEXT_MAX_LINES=int(os.getenv('CONTEXT_MAX_LINES', '500')),
+            CONTEXT_MAX_LINES=int(os.getenv('CONTEXT_MAX_LINES', '400')),
             CONTEXT_SURROUNDING_LINES=int(os.getenv('CONTEXT_SURROUNDING_LINES', '50')),
         )
 
