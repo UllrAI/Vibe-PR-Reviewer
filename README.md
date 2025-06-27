@@ -1,6 +1,6 @@
 # 🤖 Vibe PR Reviewer 
 
-*[中文](README.zh.md) | English*
+*[中文文档](README.zh.md) | English*
 
 An intelligent Pull Request code review bot based on Gemini AI that automatically performs in-depth code reviews on GitHub PRs and provides constructive improvement suggestions.
 
@@ -16,7 +16,7 @@ An intelligent Pull Request code review bot based on Gemini AI that automaticall
 
 ## Demo
 
-View actual operation results: [Example PR Review](https://github.com/UllrAI/Vibe-PR-Reviewer/pull/1)
+View actual operation results: [Example PR Review]([https://github.com/UllrAI/Vibe-PR-Reviewer/pull/1](https://github.com/UllrAI/Vibe-PR-Reviewer/pull/1#issuecomment-3012483606))
 
 ## Installation and Deployment
 
