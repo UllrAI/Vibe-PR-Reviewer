@@ -25,7 +25,7 @@ class Config:
     # AI 和审查相关的配置
     AI_MODEL_NAME: str = 'gemini-2.5-pro'
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
-    MAX_PROMPT_LENGTH: int = 180000
+    MAX_PROMPT_LENGTH: int = 200000
     INCLUDE_FILE_CONTEXT: bool = True
     CONTEXT_MAX_LINES: int = 400
     CONTEXT_SURROUNDING_LINES: int = 50
@@ -40,7 +40,7 @@ class Config:
     @classmethod
     def from_env(cls) -> 'Config':
         """从环境变量加载配置"""
-        required_vars = ['GITHUB_TOKEN', 'GITHUB_WEBHOOK_SECRET', 'GEMINI_API_KEY']
+        required_vars = ['GITHUB_TOKEN', 'GEMINI_API_KEY']
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         
         if missing_vars:
@@ -48,13 +48,18 @@ class Config:
         
         return cls(
             GITHUB_TOKEN=os.getenv('GITHUB_TOKEN'),
-            GITHUB_WEBHOOK_SECRET=os.getenv('GITHUB_WEBHOOK_SECRET'),
+            GITHUB_WEBHOOK_SECRET=os.getenv('GITHUB_WEBHOOK_SECRET', ''),
             GEMINI_API_KEY=os.getenv('GEMINI_API_KEY'),
             AI_MODEL_NAME=os.getenv('AI_MODEL_NAME', 'gemini-2.5-pro'),
             REVIEW_LABEL=os.getenv('REVIEW_LABEL', 'ReviewedByUllrAI'),
+            MAX_PROMPT_LENGTH=int(os.getenv('MAX_PROMPT_LENGTH', '200000')),
             INCLUDE_FILE_CONTEXT=os.getenv('INCLUDE_FILE_CONTEXT', 'true').lower() in ('true', '1', 't'),
             CONTEXT_MAX_LINES=int(os.getenv('CONTEXT_MAX_LINES', '400')),
             CONTEXT_SURROUNDING_LINES=int(os.getenv('CONTEXT_SURROUNDING_LINES', '50')),
+            MAX_RETRY_ATTEMPTS=int(os.getenv('MAX_RETRY_ATTEMPTS', '3')),
+            RETRY_DELAY=float(os.getenv('RETRY_DELAY', '2.0')),
+            REQUEST_TIMEOUT=int(os.getenv('REQUEST_TIMEOUT', '60')),
+            MAX_FILES_PER_REVIEW=int(os.getenv('MAX_FILES_PER_REVIEW', '50')),
         )
 
 # --- 2. 日志配置 ---
@@ -364,15 +369,7 @@ def github_webhook():
     delivery_id = request.headers.get('X-GitHub-Delivery', 'unknown')
     logger.info(f"--- 收到 Webhook 请求。Event: '{event_type}', Delivery ID: '{delivery_id}' ---")
 
-    # 生产环境中强烈建议启用签名验证
-    signature = request.headers.get('X-Hub-Signature-256')
-    if signature:
-        mac = hmac.new(config.GITHUB_WEBHOOK_SECRET.encode('utf-8'), request.data, hashlib.sha256)
-        if not hmac.compare_digest(f"sha256={mac.hexdigest()}", signature):
-            logger.warning(f"Webhook 签名验证失败! Delivery ID: {delivery_id}")
-            abort(401)
-    else:
-        logger.warning(f"注意: 未提供 Webhook 签名。生产环境中请务必配置。Delivery ID: {delivery_id}。")
+    # Webhook 签名验证已移除，无需配置 GITHUB_WEBHOOK_SECRET
     
     try:
         data = request.json
