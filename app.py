@@ -24,7 +24,7 @@ class Config:
     # AI 和审查相关的配置
     AI_MODEL_NAME: str = 'gemini-2.5-pro'
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
-    MAX_PROMPT_LENGTH: int = 80000  # 增加提示词长度以容纳上下文
+    MAX_PROMPT_LENGTH: int = 160000  # 增加提示词长度以容纳上下文
     INCLUDE_FILE_CONTEXT: bool = True
     CONTEXT_MAX_LINES: int = 500
     CONTEXT_SURROUNDING_LINES: int = 50
