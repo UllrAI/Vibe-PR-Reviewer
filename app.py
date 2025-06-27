@@ -304,7 +304,7 @@ class PRReviewer:
             prompt = PRReviewer.create_review_prompt(files, pr_data)
             review_comment = PRReviewer.get_ai_review(prompt)
             
-            comment_with_footer = f"{review_comment}\n\n---\n*🤖 此评论由 UllrAI 代码审查助手 ({config.AI_MODEL_NAME}) 自动生成*"
+            comment_with_footer = f"{review_comment}\n\n---\n*🤖 此评论由 UllrAI 代码审查助手，使用 {config.AI_MODEL_NAME} 模型生成*"
             github_client.post_comment(owner, repo, pr_number, comment_with_footer)
             github_client.add_label(owner, repo, pr_number, config.REVIEW_LABEL)
             
@@ -362,7 +362,10 @@ def github_webhook():
 
 def should_process_event(data: Dict[str, Any], event_type: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
     """判断是否应该处理该事件，并返回完整的 PR 数据对象"""
-    logger.info(f"[Step] 判断事件 '{event_type}' 是否需要处理...")
+    repo_info = data.get('repository', {})
+    owner = repo_info.get('owner', {}).get('login')
+    repo = repo_info.get('name')
+    logger.info(f"[Step] 判断事件 '{owner}/{repo}' 的 '{event_type}' 是否需要处理...")
     action = data.get('action')
 
     if event_type == 'pull_request' and action in ['opened', 'synchronize', 'reopened']:
@@ -377,9 +380,9 @@ def should_process_event(data: Dict[str, Any], event_type: str) -> Tuple[bool, O
         if 'pull_request' in data.get('issue', {}):
             comment_body = data.get('comment', {}).get('body', '')
             if '/review' in comment_body.lower():
-                repo_info = data.get('repository', {})
-                owner = repo_info.get('owner', {}).get('login')
-                repo = repo_info.get('name')
+                # repo_info = data.get('repository', {})
+                # owner = repo_info.get('owner', {}).get('login')
+                # repo = repo_info.get('name')
                 pr_number = data.get('issue', {}).get('number')
                 try:
                     pr_data = github_client.get_pr_details(owner, repo, pr_number)
