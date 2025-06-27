@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import time
+import base64  # <--- 修正点：需要导入 base64 模块
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, field
 from functools import wraps
@@ -24,7 +25,7 @@ class Config:
     # AI 和审查相关的配置
     AI_MODEL_NAME: str = 'gemini-2.5-pro'
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
-    MAX_PROMPT_LENGTH: int = 160000  # 增加提示词长度以容纳上下文
+    MAX_PROMPT_LENGTH: int = 180000
     INCLUDE_FILE_CONTEXT: bool = True
     CONTEXT_MAX_LINES: int = 400
     CONTEXT_SURROUNDING_LINES: int = 50
@@ -103,7 +104,8 @@ class GitHubClient:
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json"
+            "Accept": "application/vnd.github.v3+json",
+            "X-GitHub-Api-Version": "2022-11-28" # 推荐添加 API 版本头
         })
         self.timeout = timeout
 
@@ -127,16 +129,42 @@ class GitHubClient:
         logger.info(f"  Output: 成功获取 {len(files)} 个文件变更。")
         return files
 
+    # <--- 修正点：用更稳健的 Contents API 替换 get_raw_file_content
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
-    def get_raw_file_content(self, url: str) -> str:
-        """从 raw URL 获取文件内容"""
-        logger.info(f"[GitHub API] ==> 'get_raw_file_content'")
-        logger.info(f"  Input URL: {url}")
-        response = self.session.get(url, timeout=self.timeout)
+    def get_file_content_from_repo(self, owner: str, repo: str, file_path: str, ref: str) -> str:
+        """
+        使用 Contents API 获取仓库中特定版本的文件内容。
+        这种方法比直接拼接 raw URL 更可靠。
+        """
+        logger.info(f"[GitHub API] ==> 'get_file_content_from_repo'")
+        logger.info(f"  Input: owner={owner}, repo={repo}, path={file_path}, ref={ref}")
+        
+        # 使用官方的 Contents API 端点
+        url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}"
+        params = {"ref": ref}
+        
+        # 所有通过 self.session 的请求都会自动携带鉴权头
+        response = self.session.get(url, params=params, timeout=self.timeout)
         response.raise_for_status()
-        content = response.text
-        logger.info(f"  Output: 成功获取文件内容，大小 {len(content)} 字节。")
-        return content
+        data = response.json()
+
+        if 'content' not in data:
+            raise ValueError(f"从 API 响应中未找到文件 '{file_path}' 的 'content' 字段。")
+
+        # 内容是 Base64 编码的，需要解码
+        content_b64 = data['content']
+        content_bytes = base64.b64decode(content_b64)
+        
+        try:
+            # 尝试使用 UTF-8 解码，这是最常见的情况
+            content_str = content_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            # 如果失败，可以尝试其他编码或直接记录警告
+            logger.warning(f"文件 '{file_path}' 解码为 UTF-8 失败，将使用带替换符的 latin-1 解码。")
+            content_str = content_bytes.decode('latin-1', errors='replace')
+        
+        logger.info(f"  Output: 成功获取并解码文件内容，大小 {len(content_str)} 字节。")
+        return content_str
 
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def post_comment(self, owner: str, repo: str, pr_number: int, comment: str) -> Dict[str, Any]:
@@ -194,8 +222,10 @@ class PRReviewer:
             # 1. 添加原始文件上下文（如果启用且文件被修改）
             if config.INCLUDE_FILE_CONTEXT and status == 'modified' and base_sha and owner and repo:
                 try:
-                    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{base_sha}/{filename}"
-                    original_content = github_client.get_raw_file_content(raw_url)
+                    # <--- 修正点：调用新的、更可靠的方法获取文件内容
+                    original_content = github_client.get_file_content_from_repo(
+                        owner, repo, filename, base_sha
+                    )
                     lines = original_content.splitlines()
                     
                     context_header = "### 原始文件上下文"
@@ -335,10 +365,14 @@ def github_webhook():
     logger.info(f"--- 收到 Webhook 请求。Event: '{event_type}', Delivery ID: '{delivery_id}' ---")
 
     # 生产环境中强烈建议启用签名验证
-    # signature = request.headers.get('X-Hub-Signature-256')
-    # if not hmac.compare_digest(f"sha256={hmac.new(config.GITHUB_WEBHOOK_SECRET.encode('utf-8'), request.data, hashlib.sha256).hexdigest()}", signature):
-    #     abort(401)
-    logger.warning(f"注意: Webhook 签名验证当前已跳过。Delivery ID: {delivery_id}。")
+    signature = request.headers.get('X-Hub-Signature-256')
+    if signature:
+        mac = hmac.new(config.GITHUB_WEBHOOK_SECRET.encode('utf-8'), request.data, hashlib.sha256)
+        if not hmac.compare_digest(f"sha256={mac.hexdigest()}", signature):
+            logger.warning(f"Webhook 签名验证失败! Delivery ID: {delivery_id}")
+            abort(401)
+    else:
+        logger.warning(f"注意: 未提供 Webhook 签名。生产环境中请务必配置。Delivery ID: {delivery_id}。")
     
     try:
         data = request.json
@@ -380,9 +414,6 @@ def should_process_event(data: Dict[str, Any], event_type: str) -> Tuple[bool, O
         if 'pull_request' in data.get('issue', {}):
             comment_body = data.get('comment', {}).get('body', '')
             if '/review' in comment_body.lower():
-                # repo_info = data.get('repository', {})
-                # owner = repo_info.get('owner', {}).get('login')
-                # repo = repo_info.get('name')
                 pr_number = data.get('issue', {}).get('number')
                 try:
                     pr_data = github_client.get_pr_details(owner, repo, pr_number)
@@ -399,6 +430,10 @@ def should_process_event(data: Dict[str, Any], event_type: str) -> Tuple[bool, O
     return False, None
 
 # --- 7. 错误处理和附加端点 ---
+@app.errorhandler(401)
+def unauthorized(error):
+    return jsonify({"error": "Unauthorized"}), 401
+    
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"error": "Not Found"}), 404
@@ -412,7 +447,7 @@ def internal_error(error):
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))
     logger.info("="*50)
-    logger.info(f"PR 代码审查机器人启动 (v2.0.0)")
+    logger.info(f"PR 代码审查机器人启动 (v2.1.0)")
     logger.info(f"监听端口: {port}")
     logger.info(f"AI 模型: {config.AI_MODEL_NAME}")
     logger.info(f"包含文件上下文: {config.INCLUDE_FILE_CONTEXT}")
