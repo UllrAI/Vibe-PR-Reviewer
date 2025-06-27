@@ -1,4 +1,4 @@
-# PR Review Bot
+# 🤖 Vibe PR Reviewer 
 
 一个基于 Gemini AI 的智能 Pull Request 代码审查机器人，能够自动对 GitHub PR 进行深入的代码审查并提供建设性的修改建议。
 

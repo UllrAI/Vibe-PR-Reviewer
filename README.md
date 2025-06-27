@@ -1,4 +1,4 @@
-# PR Review Bot
+# 🤖 Vibe PR Reviewer 
 
 *[中文](README.zh.md) | English*
 
