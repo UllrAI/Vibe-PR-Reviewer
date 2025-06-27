@@ -12,6 +12,10 @@
 - ⚡ 支持重试机制和错误处理
 - 🛠️ 灵活的环境变量配置
 
+## 示例演示
+
+查看实际运行效果：[示例 PR 审查](https://github.com/UllrAI/Vibe-PR-Reviewer/pull/1)
+
 ## 安装与部署
 
 ### 1. 克隆项目
@@ -41,6 +45,8 @@ cp env.example .env
 
 ```bash
 # GitHub Personal Access Token（需要 repo 权限）
+# 获取方式：GitHub Settings → Developer settings → Personal access tokens → Tokens
+# 权限要求：Pull requests, Issues
 GITHUB_TOKEN=your_github_token
 
 # Google Gemini API Key
@@ -87,7 +93,7 @@ python app.py
 3. Content type: `application/json`
 4. Events: 选择 `Pull requests` 和 `Issue comments`
 
-**注意**: 本版本已移除 Webhook 签名验证，无需配置 secret。
+**注意**: 目前不需要 Webhook 签名验证，无需配置 secret。
 
 ## 使用方法
 
@@ -201,17 +207,3 @@ CMD ["python", "app.py"]
 ```bash
 python app.py 2>&1 | tee app.log
 ```
-
-## 版本信息
-
-当前版本: 2.1.0
-
-主要更新:
-- 移除 Webhook 签名验证
-- 增强环境变量配置支持
-- 优化错误处理和重试机制
-- 改进文件内容获取方法
-
-## 许可证
-
-请根据项目实际情况添加许可证信息。
