@@ -26,7 +26,7 @@ class Config:
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
     MAX_PROMPT_LENGTH: int = 80000  # 增加提示词长度以容纳上下文
     INCLUDE_FILE_CONTEXT: bool = True
-    CONTEXT_MAX_LINES: int = 1000
+    CONTEXT_MAX_LINES: int = 500
     CONTEXT_SURROUNDING_LINES: int = 50
     
     # API 和网络相关的配置
@@ -52,7 +52,7 @@ class Config:
             AI_MODEL_NAME=os.getenv('AI_MODEL_NAME', 'gemini-2.5-pro'),
             REVIEW_LABEL=os.getenv('REVIEW_LABEL', 'ReviewedByUllrAI'),
             INCLUDE_FILE_CONTEXT=os.getenv('INCLUDE_FILE_CONTEXT', 'true').lower() in ('true', '1', 't'),
-            CONTEXT_MAX_LINES=int(os.getenv('CONTEXT_MAX_LINES', '1000')),
+            CONTEXT_MAX_LINES=int(os.getenv('CONTEXT_MAX_LINES', '500')),
             CONTEXT_SURROUNDING_LINES=int(os.getenv('CONTEXT_SURROUNDING_LINES', '50')),
         )
 
@@ -233,13 +233,13 @@ class PRReviewer:
         pr_body = pr_data.get('body', '')
 
         prompt = f"""# 审查指令
-请对以下代码变更进行专业、深入的审查。你的目标是找出潜在的问题，并提供具体的、有建设性的修改建议。请遵循 GitHub Code Review 的最佳实践，保持评论的客观和简洁。
+请对以下代码变更进行专业、深入的审查。你的目标是找出潜在的问题，并提供具体的、有建设性的修改建议。请遵循 GitHub Code Review 的最佳实践，保持评论的客观和简洁，按重要性紧急度优先级排列。
 
 # 审查要点
-1.  **逻辑和功能**：代码是否正确实现了其预定目标？是否存在逻辑漏洞或边界情况未处理？
+1.  **逻辑和功能**：代码是否正确实现了其预定目标？是否存在BUG、逻辑漏洞或边界情况未处理？
 2.  **性能**：是否存在明显的性能瓶颈，如不必要的循环、低效的查询或内存问题？
 3.  **安全性**：是否存在常见的安全风险（如 SQL 注入、XSS、敏感信息硬编码等）？
-4.  **代码风格与可读性**：代码是否清晰、易于理解？是否遵循了项目或语言的通用规范？是否存在可以简化或重构的地方？
+4.  **代码风格与可读性**：如有，统一归类在最后一个问题中描述即可。代码是否遵循了项目或语言的最佳实践或通用规范？但忽略一些代码风格问题，如不影响逻辑的缩进、空格、换行等。
 5.  **错误处理**：异常和错误情况是否得到了妥善处理？
 
 # PR 上下文
@@ -248,11 +248,11 @@ class PRReviewer:
 {pr_body}
 
 # 输出格式
-请使用 Markdown 格式化你的审查意见。对于每一个发现点，请遵循以下模板。如果代码质量良好，没有发现问题，请明确指出。
+请使用 Markdown 格式化你的审查意见。对于每一个发现点，请遵循以下模板，对极其需要关注的问题，标题适当使用⚠️之类强调。如果代码质量良好，没有发现问题，请明确指出。
 
 ---
-**[发现点 1] 标题**
-*   **类别**: [逻辑错误 / 性能 / 安全 / 代码风格 / 建议]
+**[1] 标题**
+*   **类别**: [逻辑错误 / 性能 / 安全 / 代码风格 / 建议 等]
 *   **代码定位**: `[文件名]:[行号]`
 *   **说明**: [简洁地描述问题及其影响。]
 *   **建议**:
