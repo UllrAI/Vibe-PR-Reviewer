@@ -214,6 +214,7 @@ class PRReviewer:
         owner = repo_info.get("owner", {}).get("login")
         repo = repo_info.get("name")
         base_sha = pr_data.get("base", {}).get("sha")
+        head_sha = pr_data.get("head", {}).get("sha")
 
         prompt_parts = []
         total_length = 0
@@ -225,16 +226,16 @@ class PRReviewer:
             
             file_prompt = f"## File: `{filename}` (Status: {status})\n\n"
 
-            # 1. Add original file context (if enabled and file is modified)
-            if config.INCLUDE_FILE_CONTEXT and status == 'modified' and base_sha and owner and repo:
+            # 1. Add modified file context (if enabled and file is modified)
+            if config.INCLUDE_FILE_CONTEXT and status == 'modified' and head_sha and owner and repo:
                 try:
-                    # <--- Fix: Call new, more reliable method to get file content
-                    original_content = github_client.get_file_content_from_repo(
-                        owner, repo, filename, base_sha
+                    # Get the modified file content from head commit
+                    modified_content = github_client.get_file_content_from_repo(
+                        owner, repo, filename, head_sha
                     )
-                    lines = original_content.splitlines()
+                    lines = modified_content.splitlines()
                     
-                    context_header = "### Original File Context"
+                    context_header = "### Modified File Context"
                     if len(lines) > config.CONTEXT_MAX_LINES:
                         start_line = PRReviewer._get_context_line_from_patch(patch)
                         slice_start = max(0, start_line - config.CONTEXT_SURROUNDING_LINES)
@@ -243,14 +244,14 @@ class PRReviewer:
                         context_header += f" (Code snippet around line {start_line})"
                         logger.info(f"  - Extracted code snippet for '{filename}' ({slice_end - slice_start} lines).")
                     else:
-                        context_content = original_content
+                        context_content = modified_content
                         context_header += " (Complete file)"
                         logger.info(f"  - Included complete file content for '{filename}' ({len(lines)} lines).")
 
                     file_prompt += f"{context_header}\n```\n{context_content}\n```\n\n"
                 except Exception as e:
                     logger.warning(f"  - Unable to get context for '{filename}': {e}")
-                    file_prompt += "_[Unable to get original file context]_\n\n"
+                    file_prompt += "_[Unable to get modified file context]_\n\n"
 
             # 2. Add Diff
             safe_patch = patch.replace("```", "`` `") if patch else "_No changes_"
@@ -272,14 +273,14 @@ class PRReviewer:
         language_instruction = PRReviewer._get_language_instruction(config.OUTPUT_LANGUAGE)
         
         prompt = f"""# Review Instructions
-Please conduct a professional and thorough review of the following code changes. Your goal is to identify potential issues and provide specific, constructive modification suggestions. Follow GitHub Code Review best practices, keep comments objective and concise, and prioritize by importance and urgency.
+Please conduct a professional and thorough review of the following code changes. You have access to both the modified file content (showing the final state after changes) and the diff (showing what was changed). Your goal is to identify potential issues and provide specific, constructive modification suggestions. Follow GitHub Code Review best practices, keep comments objective and concise, and prioritize by importance and urgency.
 
 # Review Focus Areas
-1.  **Logic and Functionality**: Does the code correctly implement its intended goals? Are there any bugs, logical flaws, or unhandled edge cases?
-2.  **Performance**: Are there obvious performance bottlenecks, such as unnecessary loops, inefficient queries, or memory issues?
-3.  **Security**: Are there common security risks (such as SQL injection, XSS, hardcoded sensitive information, etc.)?
-4.  **Code Style and Readability**: If any, categorize and describe in the last issue. Does the code follow project or language best practices and common standards? But ignore some code style issues that don't affect logic, such as indentation, spaces, line breaks, etc.
-5.  **Error Handling**: Are exceptions and error conditions properly handled?
+1.  **Logic and Functionality**: Does the modified code correctly implement its intended goals? Are there any bugs, logical flaws, or unhandled edge cases in the final implementation?
+2.  **Performance**: Are there obvious performance bottlenecks in the modified code, such as unnecessary loops, inefficient queries, or memory issues?
+3.  **Security**: Are there common security risks in the modified code (such as SQL injection, XSS, hardcoded sensitive information, etc.)?
+4.  **Code Style and Readability**: If any, categorize and describe in the last issue. Does the modified code follow project or language best practices and common standards? But ignore some code style issues that don't affect logic, such as indentation, spaces, line breaks, etc.
+5.  **Error Handling**: Are exceptions and error conditions properly handled in the modified code?
 
 # PR Context
 *   **Title**: {pr_title}
@@ -301,6 +302,12 @@ Please use Markdown to format your review comments. For each finding, follow the
 ---
 
 # Code to Review
+For each file, you will see:
+1. **Modified File Context**: The complete file content or relevant code snippet after the changes have been applied
+2. **Diff**: The specific changes made in this commit
+
+Use both pieces of information together to understand the full context and impact of the changes.
+
 {diffs_text}
 
 Please start your review comments directly without any opening remarks.{language_instruction}"""
