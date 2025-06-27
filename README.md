@@ -87,7 +87,7 @@ python app.py
 3. Content type: `application/json`
 4. Events: 选择 `Pull requests` 和 `Issue comments`
 
-**注意**: 本版本已移除 Webhook 签名验证，无需配置 secret。
+**注意**: 目前不需要 Webhook 签名验证，无需配置 secret。
 
 ## 使用方法
 
@@ -201,17 +201,3 @@ CMD ["python", "app.py"]
 ```bash
 python app.py 2>&1 | tee app.log
 ```
-
-## 版本信息
-
-当前版本: 2.1.0
-
-主要更新:
-- 移除 Webhook 签名验证
-- 增强环境变量配置支持
-- 优化错误处理和重试机制
-- 改进文件内容获取方法
-
-## 许可证
-
-请根据项目实际情况添加许可证信息。
