@@ -69,6 +69,9 @@ CONTEXT_MAX_LINES=400                          # Default: 400
 CONTEXT_SURROUNDING_LINES=50                   # Default: 50
 MAX_FILES_PER_REVIEW=50                        # Default: 50
 
+# Output language configuration
+OUTPUT_LANGUAGE=english                        # Default: english (can be any language like "Chinese", "Japanese", etc.)
+
 # Network and retry configuration
 MAX_RETRY_ATTEMPTS=3                           # Default: 3
 RETRY_DELAY=2.0                               # Default: 2.0
@@ -129,6 +132,10 @@ Enter `/review` in PR comments to manually trigger code review.
 - `CONTEXT_MAX_LINES`: Maximum line limit for complete files
 - `CONTEXT_SURROUNDING_LINES`: Number of context lines for code snippets
 - `MAX_FILES_PER_REVIEW`: Maximum number of files per review
+
+### Output Language Configuration
+
+- `OUTPUT_LANGUAGE`: Specifies the language for AI review comments (default: english). Can be set to any language like "Chinese", "Japanese", "French", etc. If set to "english" or not configured, no language instruction will be added to AI prompts.
 
 ### Network Configuration
 

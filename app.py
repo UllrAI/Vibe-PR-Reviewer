@@ -14,15 +14,15 @@ import requests
 import google.generativeai as genai
 from flask import Flask, request, abort, jsonify
 
-# --- 1. 配置管理 ---
+# --- 1. Configuration Management ---
 @dataclass
 class Config:
-    """集中管理所有配置"""
+    """Centralized configuration management"""
     GITHUB_TOKEN: str
     GITHUB_WEBHOOK_SECRET: str
     GEMINI_API_KEY: str
     
-    # AI 和审查相关的配置
+    # AI and review related configurations
     AI_MODEL_NAME: str = 'gemini-2.5-pro'
     REVIEW_LABEL: str = 'ReviewedByUllrAI'
     MAX_PROMPT_LENGTH: int = 200000
@@ -30,21 +30,22 @@ class Config:
     CONTEXT_MAX_LINES: int = 400
     CONTEXT_SURROUNDING_LINES: int = 50
     
-    # API 和网络相关的配置
+    # API and network related configurations
     MAX_RETRY_ATTEMPTS: int = 3
     RETRY_DELAY: float = 2.0
-    REQUEST_TIMEOUT: int = 60 # 增加超时以应对文件下载
+    REQUEST_TIMEOUT: int = 60 # Increased timeout for file downloads
     MAX_FILES_PER_REVIEW: int = 50
+    OUTPUT_LANGUAGE: str = 'english'
     
 
     @classmethod
     def from_env(cls) -> 'Config':
-        """从环境变量加载配置"""
+        """Load configuration from environment variables"""
         required_vars = ['GITHUB_TOKEN', 'GEMINI_API_KEY']
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         
         if missing_vars:
-            raise ValueError(f"缺少必需的环境变量: {', '.join(missing_vars)}")
+            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
         
         return cls(
             GITHUB_TOKEN=os.getenv('GITHUB_TOKEN'),
@@ -60,11 +61,12 @@ class Config:
             RETRY_DELAY=float(os.getenv('RETRY_DELAY', '2.0')),
             REQUEST_TIMEOUT=int(os.getenv('REQUEST_TIMEOUT', '60')),
             MAX_FILES_PER_REVIEW=int(os.getenv('MAX_FILES_PER_REVIEW', '50')),
+            OUTPUT_LANGUAGE=os.getenv('OUTPUT_LANGUAGE', 'english'),
         )
 
-# --- 2. 日志配置 ---
+# --- 2. Logging Configuration ---
 def setup_logging():
-    """配置结构化日志"""
+    """Configure structured logging"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -74,9 +76,9 @@ def setup_logging():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     return logging.getLogger(__name__)
 
-# --- 3. 错误处理和重试装饰器 ---
+# --- 3. Error Handling and Retry Decorator ---
 def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):
-    """重试装饰器，增加了对失败的日志记录"""
+    """Retry decorator with enhanced failure logging"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -87,15 +89,15 @@ def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):
                 except Exception as e:
                     last_exception = e
                     if attempt < max_attempts - 1:
-                        logger.warning(f"函数 {func.__name__} 失败 (尝试 {attempt + 1}/{max_attempts}): {e}. 将在 {delay * (attempt + 1):.1f} 秒后重试...")
+                        logger.warning(f"Function {func.__name__} failed (attempt {attempt + 1}/{max_attempts}): {e}. Retrying in {delay * (attempt + 1):.1f} seconds...")
                         time.sleep(delay * (attempt + 1))
                     else:
-                        logger.error(f"函数 {func.__name__} 在 {max_attempts} 次尝试后最终失败。")
+                        logger.error(f"Function {func.__name__} failed after {max_attempts} attempts.")
             raise last_exception
         return wrapper
     return decorator
 
-# --- 4. 初始化 ---
+# --- 4. Initialization ---
 logger = setup_logging()
 config = Config.from_env()
 app = Flask(__name__)
@@ -104,19 +106,19 @@ genai.configure(api_key=config.GEMINI_API_KEY)
 ai_model = genai.GenerativeModel(config.AI_MODEL_NAME)
 
 class GitHubClient:
-    """封装 GitHub API 操作，并为每个操作添加日志"""
+    """Encapsulates GitHub API operations with logging for each operation"""
     def __init__(self, token: str, timeout: int):
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
-            "X-GitHub-Api-Version": "2022-11-28" # 推荐添加 API 版本头
+            "X-GitHub-Api-Version": "2022-11-28" # Recommended to add API version header
         })
         self.timeout = timeout
 
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def get_pr_details(self, owner: str, repo: str, pr_number: int) -> Dict[str, Any]:
-        """获取单个 PR 的详细信息"""
+        """Get detailed information for a single PR"""
         logger.info(f"[GitHub API] ==> 'get_pr_details' for PR #{pr_number}")
         url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
         response = self.session.get(url, timeout=self.timeout)
@@ -125,87 +127,87 @@ class GitHubClient:
 
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def get_pr_files(self, owner: str, repo: str, pr_number: int) -> List[Dict[str, Any]]:
-        """获取 PR 文件变更"""
+        """Get PR file changes"""
         logger.info(f"[GitHub API] ==> 'get_pr_files' for PR #{pr_number}")
         url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
         response = self.session.get(url, timeout=self.timeout)
         response.raise_for_status()
         files = response.json()
-        logger.info(f"  Output: 成功获取 {len(files)} 个文件变更。")
+        logger.info(f"  Output: Successfully retrieved {len(files)} file changes.")
         return files
 
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def get_file_content_from_repo(self, owner: str, repo: str, file_path: str, ref: str) -> str:
         """
-        使用 Contents API 获取仓库中特定版本的文件内容。
-        这种方法比直接拼接 raw URL 更可靠。
+        Use Contents API to get file content from repository at specific version.
+        This method is more reliable than directly concatenating raw URLs.
         """
         logger.info(f"[GitHub API] ==> 'get_file_content_from_repo'")
         logger.info(f"  Input: owner={owner}, repo={repo}, path={file_path}, ref={ref}")
         
-        # 使用官方的 Contents API 端点
+        # Use official Contents API endpoint
         url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}"
         params = {"ref": ref}
         
-        # 所有通过 self.session 的请求都会自动携带鉴权头
+        # All requests through self.session automatically carry authentication headers
         response = self.session.get(url, params=params, timeout=self.timeout)
         response.raise_for_status()
         data = response.json()
 
         if 'content' not in data:
-            raise ValueError(f"从 API 响应中未找到文件 '{file_path}' 的 'content' 字段。")
+            raise ValueError(f"'content' field not found for file '{file_path}' in API response.")
 
-        # 内容是 Base64 编码的，需要解码
+        # Content is Base64 encoded and needs to be decoded
         content_b64 = data['content']
         content_bytes = base64.b64decode(content_b64)
         
         try:
-            # 尝试使用 UTF-8 解码，这是最常见的情况
+            # Try UTF-8 decoding, which is the most common case
             content_str = content_bytes.decode('utf-8')
         except UnicodeDecodeError:
-            # 如果失败，可以尝试其他编码或直接记录警告
-            logger.warning(f"文件 '{file_path}' 解码为 UTF-8 失败，将使用带替换符的 latin-1 解码。")
+            # If it fails, try other encodings or log a warning
+            logger.warning(f"Failed to decode file '{file_path}' as UTF-8, using latin-1 with replacement characters.")
             content_str = content_bytes.decode('latin-1', errors='replace')
         
-        logger.info(f"  Output: 成功获取并解码文件内容，大小 {len(content_str)} 字节。")
+        logger.info(f"  Output: Successfully retrieved and decoded file content, size {len(content_str)} bytes.")
         return content_str
 
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def post_comment(self, owner: str, repo: str, pr_number: int, comment: str) -> Dict[str, Any]:
-        """发布 PR 评论"""
+        """Post PR comment"""
         logger.info(f"[GitHub API] ==> 'post_comment' on PR #{pr_number}")
         url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments"
         response = self.session.post(url, json={"body": comment}, timeout=self.timeout)
         response.raise_for_status()
         response_json = response.json()
-        logger.info(f"  Output: 评论成功发布。URL: {response_json.get('html_url')}")
+        logger.info(f"  Output: Comment successfully posted. URL: {response_json.get('html_url')}")
         return response_json
     
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS)
     def add_label(self, owner: str, repo: str, pr_number: int, label: str) -> None:
-        """添加 PR 标签"""
+        """Add PR label"""
         logger.info(f"[GitHub API] ==> 'add_label' on PR #{pr_number}")
         url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/labels"
         response = self.session.post(url, json={"labels": [label]}, timeout=self.timeout)
         response.raise_for_status()
-        logger.info(f"  Output: 标签 '{label}' 成功添加。")
+        logger.info(f"  Output: Label '{label}' successfully added.")
 
 github_client = GitHubClient(config.GITHUB_TOKEN, config.REQUEST_TIMEOUT)
 
-# --- 5. 核心功能 ---
+# --- 5. Core Functionality ---
 class PRReviewer:
-    """PR 审查核心逻辑"""
+    """PR review core logic"""
 
     @staticmethod
     def _get_context_line_from_patch(patch: str) -> int:
-        """从 patch 字符串中解析出变更开始的行号"""
+        """Parse the starting line number of changes from patch string"""
         match = re.search(r"@@ -(\d+),?\d* \+", patch)
         return int(match.group(1)) if match else 1
 
     @staticmethod
     def create_review_prompt(files: List[Dict[str, Any]], pr_data: Dict[str, Any]) -> str:
-        """创建 AI 审查提示词，可选择性包含文件上下文"""
-        logger.info("[Step] 创建 AI 审查提示词...")
+        """Create AI review prompt, optionally including file context"""
+        logger.info("[Step] Creating AI review prompt...")
         files = files[:config.MAX_FILES_PER_REVIEW]
         
         repo_info = pr_data.get("base", {}).get("repo", {})
@@ -221,29 +223,29 @@ class PRReviewer:
             patch = file.get('patch', '')
             status = file.get('status', 'modified')
             
-            file_prompt = f"## 文件: `{filename}` (状态: {status})\n\n"
+            file_prompt = f"## File: `{filename}` (Status: {status})\n\n"
 
-            # 1. 添加原始文件上下文（如果启用且文件被修改）
+            # 1. Add original file context (if enabled and file is modified)
             if config.INCLUDE_FILE_CONTEXT and status == 'modified' and base_sha and owner and repo:
                 try:
-                    # <--- 修正点：调用新的、更可靠的方法获取文件内容
+                    # <--- Fix: Call new, more reliable method to get file content
                     original_content = github_client.get_file_content_from_repo(
                         owner, repo, filename, base_sha
                     )
                     lines = original_content.splitlines()
                     
-                    context_header = "### 原始文件上下文"
+                    context_header = "### Original File Context"
                     if len(lines) > config.CONTEXT_MAX_LINES:
                         start_line = PRReviewer._get_context_line_from_patch(patch)
                         slice_start = max(0, start_line - config.CONTEXT_SURROUNDING_LINES)
                         slice_end = min(len(lines), start_line + config.CONTEXT_SURROUNDING_LINES)
                         context_content = "\n".join(lines[slice_start:slice_end])
-                        context_header += f" (代码片段，围绕第 {start_line} 行)"
-                        logger.info(f"  - 为 '{filename}' 提取了代码片段 ({slice_end - slice_start} 行)。")
+                        context_header += f" (Code snippet around line {start_line})"
+                        logger.info(f"  - Extracted code snippet for '{filename}' ({slice_end - slice_start} lines).")
                     else:
                         context_content = original_content
-                        context_header += " (完整文件)"
-                        logger.info(f"  - 为 '{filename}' 包含了完整文件内容 ({len(lines)} 行)。")
+                        context_header += " (Complete file)"
+                        logger.info(f"  - Included complete file content for '{filename}' ({len(lines)} lines).")
 
                     file_prompt += f"{context_header}\n```\n{context_content}\n```\n\n"
                 except Exception as e:
@@ -266,47 +268,57 @@ class PRReviewer:
         pr_title = pr_data.get('title', '')
         pr_body = pr_data.get('body', '')
 
-        prompt = f"""# 审查指令
-请对以下代码变更进行专业、深入的审查。你的目标是找出潜在的问题，并提供具体的、有建设性的修改建议。请遵循 GitHub Code Review 的最佳实践，保持评论的客观和简洁，按重要性紧急度优先级排列。
+        # Language instruction based on OUTPUT_LANGUAGE setting
+        language_instruction = PRReviewer._get_language_instruction(config.OUTPUT_LANGUAGE)
+        
+        prompt = f"""# Review Instructions
+Please conduct a professional and thorough review of the following code changes. Your goal is to identify potential issues and provide specific, constructive modification suggestions. Follow GitHub Code Review best practices, keep comments objective and concise, and prioritize by importance and urgency.
 
-# 审查要点
-1.  **逻辑和功能**：代码是否正确实现了其预定目标？是否存在BUG、逻辑漏洞或边界情况未处理？
-2.  **性能**：是否存在明显的性能瓶颈，如不必要的循环、低效的查询或内存问题？
-3.  **安全性**：是否存在常见的安全风险（如 SQL 注入、XSS、敏感信息硬编码等）？
-4.  **代码风格与可读性**：如有，统一归类在最后一个问题中描述即可。代码是否遵循了项目或语言的最佳实践或通用规范？但忽略一些代码风格问题，如不影响逻辑的缩进、空格、换行等。
-5.  **错误处理**：异常和错误情况是否得到了妥善处理？
+# Review Focus Areas
+1.  **Logic and Functionality**: Does the code correctly implement its intended goals? Are there any bugs, logical flaws, or unhandled edge cases?
+2.  **Performance**: Are there obvious performance bottlenecks, such as unnecessary loops, inefficient queries, or memory issues?
+3.  **Security**: Are there common security risks (such as SQL injection, XSS, hardcoded sensitive information, etc.)?
+4.  **Code Style and Readability**: If any, categorize and describe in the last issue. Does the code follow project or language best practices and common standards? But ignore some code style issues that don't affect logic, such as indentation, spaces, line breaks, etc.
+5.  **Error Handling**: Are exceptions and error conditions properly handled?
 
-# PR 上下文
-*   **标题**: {pr_title}
-*   **描述**:
+# PR Context
+*   **Title**: {pr_title}
+*   **Description**:
 {pr_body}
 
-# 输出格式
-请使用 Markdown 格式化你的审查意见。对于每一个发现点，请遵循以下模板，对极其需要关注的问题，标题适当使用⚠️之类强调。如果代码质量良好，没有发现问题，请明确指出。
+# Output
+Please use Markdown to format your review comments. For each finding, follow the template below. For issues that require urgent attention, use appropriate emphasis like ⚠️ in the title. If the code quality is good and no issues are found, please clearly state so.
 
 ---
-**[1] 标题**
-*   **类别**: [逻辑错误 / 性能 / 安全 / 代码风格 / 建议 等]
-*   **代码定位**: `[文件名]:[行号]`
-*   **说明**: [简洁地描述问题及其影响。]
-*   **建议**:
-    ```[语言]
-    // 粘贴建议修改后的代码片段
+**[1] Title**
+*   **Category**: [Logic Error / Performance / Security / Code Style / Suggestion etc.]
+*   **Code Location**: `[filename]:[line number]`
+*   **Description**: [Briefly describe the issue and its impact.]
+*   **Suggestion**:
+    ```[language]
+    // Paste suggested modified code snippet
     ```
 ---
 
-# 待审查代码
+# Code to Review
 {diffs_text}
 
-请直接开始你的审查意见，无需任何开场白。"""
+Please start your review comments directly without any opening remarks.{language_instruction}"""
         
         logger.info(f"  Output: Prompt creation completed. Length: {len(prompt)} characters. Files processed: {len(prompt_parts)}.")
         return prompt
 
     @staticmethod
+    def _get_language_instruction(output_language: str) -> str:
+        """Generate language instruction based on OUTPUT_LANGUAGE setting"""
+        if output_language and output_language.lower() != 'english':
+            return f' Output language: {output_language}.'
+        return ''
+    
+    @staticmethod
     @retry_on_failure(max_attempts=config.MAX_RETRY_ATTEMPTS, delay=config.RETRY_DELAY)
     def get_ai_review(prompt: str) -> str:
-        """调用 AI 获取审查意见"""
+        """Call AI to get review comments"""
         logger.info("[Step] Calling Gemini AI for code review...")
         try:
             response = ai_model.generate_content(prompt)
@@ -319,7 +331,7 @@ class PRReviewer:
 
     @staticmethod
     def process_pr_review(pr_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理 PR 审查的完整流程"""
+        """Process complete PR review workflow"""
         start_time = time.time()
         pr_number = pr_data['number']
         repo_info = pr_data.get("base", {}).get("repo", {})
@@ -355,15 +367,15 @@ class PRReviewer:
         
         return result
 
-# --- 6. Web 端点 ---
+# --- 6. Web Endpoints ---
 @app.route('/health', methods=['GET'])
 def health_check():
-    """健康检查端点"""
+    """Health check endpoint"""
     return jsonify({"status": "healthy", "service": "pr-reviewer", "version": "2.0.0", "model": config.AI_MODEL_NAME})
 
 @app.route('/webhook', methods=['POST'])
 def github_webhook():
-    """GitHub Webhook 处理端点"""
+    """GitHub Webhook handling endpoint"""
     event_type = request.headers.get('X-GitHub-Event', 'unknown')
     delivery_id = request.headers.get('X-GitHub-Delivery', 'unknown')
     logger.info(f"--- Received Webhook request. Event: '{event_type}', Delivery ID: '{delivery_id}' ---")
@@ -391,7 +403,7 @@ def github_webhook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def should_process_event(data: Dict[str, Any], event_type: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
-    """判断是否应该处理该事件，并返回完整的 PR 数据对象"""
+    """Determine whether to process the event and return complete PR data object"""
     repo_info = data.get('repository', {})
     owner = repo_info.get('owner', {}).get('login')
     repo = repo_info.get('name')
@@ -425,13 +437,13 @@ def should_process_event(data: Dict[str, Any], event_type: str) -> Tuple[bool, O
     logger.info(f"  Output: Skipped. Event '{event_type}.{action}' is not a target event.")
     return False, None
 
-# --- 7. 错误处理和附加端点 ---
+# --- 7. Error Handling and Additional Endpoints ---
 @app.errorhandler(401)
-def unauthorized(error):
+def unauthorized(_error):
     return jsonify({"error": "Unauthorized"}), 401
     
 @app.errorhandler(404)
-def not_found(error):
+def not_found(_error):
     return jsonify({"error": "Not Found"}), 404
 
 @app.errorhandler(500)
@@ -439,7 +451,7 @@ def internal_error(error):
     logger.error(f"Internal server error: {error}", exc_info=True)
     return jsonify({"error": "Internal Server Error"}), 500
 
-# --- 8. 启动应用 ---
+# --- 8. Application Startup ---
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))
     logger.info("="*50)

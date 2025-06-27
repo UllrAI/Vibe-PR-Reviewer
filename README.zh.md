@@ -67,6 +67,9 @@ CONTEXT_MAX_LINES=400                          # 默认: 400
 CONTEXT_SURROUNDING_LINES=50                   # 默认: 50
 MAX_FILES_PER_REVIEW=50                        # 默认: 50
 
+# 输出语言配置
+OUTPUT_LANGUAGE=english                        # 默认: english (可设置为任何语言，如"中文"、"日语"等)
+
 # 网络和重试配置
 MAX_RETRY_ATTEMPTS=3                           # 默认: 3
 RETRY_DELAY=2.0                               # 默认: 2.0
@@ -127,6 +130,10 @@ python app.py
 - `CONTEXT_MAX_LINES`: 完整文件的最大行数限制
 - `CONTEXT_SURROUNDING_LINES`: 代码片段的上下文行数
 - `MAX_FILES_PER_REVIEW`: 单次审查的最大文件数
+
+### 输出语言配置
+
+- `OUTPUT_LANGUAGE`: 指定AI审查评论的语言（默认: english）。可设置为任何语言，如"中文"、"日语"、"法语"等。如果设置为"english"或不配置，则不会向AI提示词添加语言指令。
 
 ### 网络配置
 
