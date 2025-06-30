@@ -45,17 +45,24 @@ async def review_pull_request(repo_full_name: str, pr_number: int, head_sha: str
             # In a real scenario, you'd parse hunks to find specific lines.
             position = None
             if file_change["hunks"]:
-                # Find the first line that is actually changed (starts with + or -)
+                # Prioritize finding a '+' line for the position
                 for hunk in file_change["hunks"]:
                     for line_idx, line_content in enumerate(hunk["lines"]):
-                        if line_content.startswith("+") or line_content.startswith("-"):
-                            # Position is 1-indexed relative to the start of the diff hunk
-                            # For simplicity, we'll just use the target_start_line for now.
-                            # A more robust solution would involve mapping diff lines to actual file lines.
+                        if line_content.startswith("+"):
                             position = hunk["target_start_line"] + line_idx
                             break
                     if position is not None:
                         break
+                
+                # If no '+' line found, find the first changed line
+                if position is None:
+                    for hunk in file_change["hunks"]:
+                        for line_idx, line_content in enumerate(hunk["lines"]):
+                            if line_content.startswith("+") or line_content.startswith("-"):
+                                position = hunk["target_start_line"] + line_idx
+                                break
+                        if position is not None:
+                            break
 
             if review_comment_body and review_comment_body != "No issues found." and position is not None:
                 comments_to_post.append({
